@@ -19,6 +19,7 @@
             <li>Spellchecking</li>
             <li>Brace matching</li>
             <li>Rename refactoring</li>
+            <li>Error highlighting using elm-make</li>
         </ul>
     ]]></description>
 
@@ -116,6 +117,8 @@
         <spellchecker.support
                 language="Elm"
                 implementationClass="com.intellij.spellchecker.tokenizer.SpellcheckingStrategy"/>
+        <externalAnnotator language="Elm" implementationClass="org.elmlang.intellijplugin.features.inspection.ElmMakeExternalAnnotator" />
+
         <additionalTextAttributes scheme="Default" file="colorSchemes/ElmDefault.xml"/>
         <additionalTextAttributes scheme="Darcula" file="colorSchemes/ElmDarcula.xml"/>
         <liveTemplateContext implementation="org.elmlang.intellijplugin.features.ElmTemplateContext"/>
@@ -124,5 +127,11 @@
     <actions>
         <!-- Add your actions here -->
     </actions>
+
+    <application-components>
+        <component>
+            <implementation-class>org.elmlang.intellijplugin.Component</implementation-class>
+        </component>
+    </application-components>
 
 </idea-plugin>
