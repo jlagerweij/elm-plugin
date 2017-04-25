@@ -8,10 +8,12 @@ import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.Annotation;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.ExternalAnnotator;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 
@@ -74,10 +76,15 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
             return Collections.emptyList();
         }
 
-        String basePath = file.getProject().getBasePath();
+        final Optional<String> basePath = findElmPackageDirectory(file);
+
+        if (!basePath.isPresent()) {
+            return Collections.emptyList();
+        }
+
         String canonicalPath = file.getVirtualFile().getCanonicalPath();
 
-        Optional<InputStream> inputStream = executeElmMake(basePath, canonicalPath);
+        Optional<InputStream> inputStream = executeElmMake(basePath.get(), canonicalPath);
 
         List<ElmMakeResult> issues = new ArrayList<>();
         if (inputStream.isPresent()) {
@@ -94,7 +101,7 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
 
                     issues.addAll(makeResult
                             .stream()
-                            .filter(res -> isIssueForCurrentFile(basePath, canonicalPath, res)).collect(Collectors.toList()));
+                            .filter(res -> isIssueForCurrentFile(basePath.get(), canonicalPath, res)).collect(Collectors.toList()));
                 }
             } catch (JsonSyntaxException e) {
                 LOG.error(e.getMessage(), e);
@@ -105,6 +112,23 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
         }
 
         return issues;
+    }
+
+    private Optional<String> findElmPackageDirectory(PsiFile file) {
+        final PsiDirectory[] parent = new PsiDirectory[1];
+        ApplicationManager.getApplication().runReadAction(() -> {
+            parent[0] = file.getParent();
+            while (parent[0] != null && parent[0].isValid() && parent[0].findFile("elm-package.json") == null) {
+                parent[0] = parent[0].getParent();
+            }
+
+        });
+
+        if (parent[0] == null) {
+            return Optional.empty();
+        } else {
+            return Optional.ofNullable(parent[0].getVirtualFile().getCanonicalPath());
+        }
     }
 
     private boolean notValidJsonArray(String line) {
@@ -171,7 +195,7 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
     private Optional<InputStream> executeElmMake(String basePath, String file) {
         try {
             // TODO get the elm-make binary from configuration
-            LOG.debug("/usr/local/bin/elm-make --report=json --output=/dev/null " + file);
+            LOG.info("/usr/local/bin/elm-make --report=json --output=/dev/null " + basePath + " - " + file);
             Process process = new ProcessBuilder("/usr/local/bin/elm-make", "--report=json", "--output=/dev/null", file)
                     .directory(new File(basePath))
                     .redirectErrorStream(true)
