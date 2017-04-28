@@ -118,6 +118,7 @@
                 language="Elm"
                 implementationClass="com.intellij.spellchecker.tokenizer.SpellcheckingStrategy"/>
         <externalAnnotator language="Elm" implementationClass="org.elmlang.intellijplugin.features.inspection.ElmMakeExternalAnnotator" />
+        <problemFileHighlightFilter implementation="com.intellij.codeInsight.problems.DefaultProblemFileHighlightFilter" />
 
         <additionalTextAttributes scheme="Default" file="colorSchemes/ElmDefault.xml"/>
         <additionalTextAttributes scheme="Darcula" file="colorSchemes/ElmDarcula.xml"/>

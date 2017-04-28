@@ -11,8 +11,11 @@ import com.intellij.lang.annotation.ExternalAnnotator;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.problems.Problem;
+import com.intellij.problems.WolfTheProblemSolver;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
@@ -53,6 +56,12 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
     static class Position {
         int line;
         int column;
+    }
+
+    @Nullable
+    @Override
+    public PsiFile collectInformation(@NotNull PsiFile file, @NotNull Editor editor, boolean hasErrors) {
+        return collectInformation(file);
     }
 
     /** Called first; in our case, just return file and do nothing */
@@ -147,11 +156,11 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
         Document document = PsiDocumentManager.getInstance(file.getProject()).getDocument(file);
 
         for (ElmMakeResult issue : issues) {
-            annotateForIssue(holder, document, issue);
+            annotateForIssue(holder, document, issue, file);
         }
     }
 
-    private void annotateForIssue(@NotNull AnnotationHolder holder, Document document, ElmMakeResult issue) {
+    private void annotateForIssue(@NotNull AnnotationHolder holder, Document document, ElmMakeResult issue, PsiFile file) {
         TextRange selector = findAnnotationLocation(document, issue);
 
         Annotation annotation;
@@ -165,6 +174,10 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
             }
         } else {
             annotation = holder.createErrorAnnotation(selector, issue.overview);
+
+            WolfTheProblemSolver theProblemSolver = WolfTheProblemSolver.getInstance(file.getProject());
+            final Problem problem = theProblemSolver.convertToProblem(file.getVirtualFile(), issue.region.start.line, issue.region.start.column, new String[]{ issue.details });
+            theProblemSolver.weHaveGotNonIgnorableProblems(file.getVirtualFile(), Collections.singletonList(problem));
         }
 
         String tooltip = createToolTip(issue);
@@ -196,7 +209,7 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
         try {
             // TODO get the elm-make binary from configuration
             LOG.info("/usr/local/bin/elm-make --report=json --output=/dev/null " + basePath + " - " + file);
-            Process process = new ProcessBuilder("/usr/local/bin/elm-make", "--report=json", "--output=/dev/null", file)
+            Process process = new ProcessBuilder("/usr/local/bin/elm-make", "--report=json", "--output=/dev/null", "--yes", "--warn", file)
                     .directory(new File(basePath))
                     .redirectErrorStream(true)
                     .start();
