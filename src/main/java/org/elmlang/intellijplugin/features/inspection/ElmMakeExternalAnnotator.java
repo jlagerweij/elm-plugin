@@ -5,6 +5,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.intellij.codeInspection.ProblemHighlightType;
+import com.intellij.execution.ExecutionException;
+import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.lang.annotation.Annotation;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.ExternalAnnotator;
@@ -21,10 +23,11 @@ import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 
 import org.elmlang.intellijplugin.Component;
+import org.elmlang.intellijplugin.elmmake.ElmMake;
+import org.elmlang.intellijplugin.settings.ElmPluginSettings;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -81,6 +84,11 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
     @Nullable
     @Override
     public List<ElmMakeResult> doAnnotate(final PsiFile file) {
+        ElmPluginSettings elmPluginSettings = ElmPluginSettings.getInstance(file.getProject());
+
+        if (!elmPluginSettings.pluginEnabled) {
+            return Collections.emptyList();
+        }
         if (!isValidPsiFile(file)) {
             return Collections.emptyList();
         }
@@ -93,7 +101,7 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
 
         String canonicalPath = file.getVirtualFile().getCanonicalPath();
 
-        Optional<InputStream> inputStream = executeElmMake(basePath.get(), canonicalPath);
+        Optional<InputStream> inputStream = ElmMake.execute(basePath.get(), elmPluginSettings.elmMakeExecutable, canonicalPath);
 
         List<ElmMakeResult> issues = new ArrayList<>();
         if (inputStream.isPresent()) {
@@ -203,26 +211,6 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
 
     private boolean isValidPsiFile(PsiFile file) {
         return file != null && file.getVirtualFile() != null && file.getVirtualFile().isValid();
-    }
-
-    private Optional<InputStream> executeElmMake(String basePath, String file) {
-        try {
-            // TODO get the elm-make binary from configuration
-            LOG.info("/usr/local/bin/elm-make --report=json --output=/dev/null " + basePath + " - " + file);
-            Process process = new ProcessBuilder("/usr/local/bin/elm-make", "--report=json", "--output=/dev/null", "--yes", "--warn", file)
-                    .directory(new File(basePath))
-                    .redirectErrorStream(true)
-                    .start();
-            process.waitFor();
-            LOG.debug("elm-make exit value: " + process.exitValue());
-            if (process.exitValue() == 1) {
-                return Optional.of(process.getInputStream());
-            }
-
-        } catch (IOException | InterruptedException e) {
-            LOG.error(e.getMessage(), e);
-        }
-        return Optional.empty();
     }
 
     @NotNull

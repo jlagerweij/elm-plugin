@@ -117,6 +117,8 @@
         <spellchecker.support
                 language="Elm"
                 implementationClass="com.intellij.spellchecker.tokenizer.SpellcheckingStrategy"/>
+        <projectService serviceImplementation="org.elmlang.intellijplugin.settings.ElmPluginSettings"/>
+        <projectConfigurable instance="org.elmlang.intellijplugin.settings.ElmPluginSettingsPage"/>
         <externalAnnotator language="Elm" implementationClass="org.elmlang.intellijplugin.features.inspection.ElmMakeExternalAnnotator" />
         <problemFileHighlightFilter implementation="com.intellij.codeInsight.problems.DefaultProblemFileHighlightFilter" />
 
