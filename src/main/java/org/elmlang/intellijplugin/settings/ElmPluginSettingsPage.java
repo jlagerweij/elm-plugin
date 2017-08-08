@@ -35,13 +35,10 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class ElmPluginSettingsPage implements Configurable {
-    private static final String HOW_TO_USE_ELM_PLUGIN = "How to Use Elm Language Plugin";
-    private static final String HOW_TO_USE_LINK = "https://github.com/durkiewicz/elm-plugin";
     private final Project project;
 
     private JCheckBox pluginEnabledCheckbox;
     private JPanel panel;
-    private HyperlinkLabel usageLink;
     private JLabel versionLabel;
     private JLabel elmMakeExeLabel;
     private TextFieldWithHistoryWithBrowseButton elmMakeExeField;
@@ -179,7 +176,5 @@ public class ElmPluginSettingsPage implements Configurable {
     }
 
     private void createUIComponents() {
-        // TODO: place custom component creation code here
-        usageLink = SwingHelper.createWebHyperlink(HOW_TO_USE_ELM_PLUGIN, HOW_TO_USE_LINK);
     }
 }
