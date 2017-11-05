@@ -1,12 +1,6 @@
 package org.elmlang.intellijplugin.features.inspection;
 
-import com.google.common.io.CharStreams;
-import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
 import com.intellij.codeInspection.ProblemHighlightType;
-import com.intellij.execution.ExecutionException;
-import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.lang.annotation.Annotation;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.ExternalAnnotator;
@@ -24,54 +18,34 @@ import com.intellij.psi.PsiFile;
 
 import org.elmlang.intellijplugin.Component;
 import org.elmlang.intellijplugin.elmmake.ElmMake;
+import org.elmlang.intellijplugin.elmmake.Problems;
+import org.elmlang.intellijplugin.elmmake.Region;
 import org.elmlang.intellijplugin.settings.ElmPluginSettings;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<ElmMakeExternalAnnotator.ElmMakeResult>> {
+public class ElmMakeExternalAnnotator extends ExternalAnnotator<AnnotatorFile, List<Problems>> {
     private static final Logger LOG = Logger.getInstance(Component.class);
     private static final String TAB = "    ";
 
-    static class ElmMakeResult {
-        String tag;
-        String overview;
-        Region subregion;
-        String details;
-        Region region;
-        String type;
-        String file;
-    }
-
-    static class Region {
-        Position start;
-        Position end;
-    }
-
-    static class Position {
-        int line;
-        int column;
-    }
-
     @Nullable
     @Override
-    public PsiFile collectInformation(@NotNull PsiFile file, @NotNull Editor editor, boolean hasErrors) {
-        return collectInformation(file);
+    public AnnotatorFile collectInformation(@NotNull PsiFile file, @NotNull Editor editor, boolean hasErrors) {
+        AnnotatorFile annotatorFile = collectInformation(file);
+        annotatorFile.setEditor(editor);
+        return annotatorFile;
     }
 
     /** Called first; in our case, just return file and do nothing */
     @Override
     @Nullable
-    public PsiFile collectInformation(@NotNull PsiFile file) {
-        return file;
+    public AnnotatorFile collectInformation(@NotNull PsiFile file) {
+        return new AnnotatorFile(file);
     }
 
     /** Called 2nd; look for trouble in file and return list of issues.
@@ -83,7 +57,10 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
      */
     @Nullable
     @Override
-    public List<ElmMakeResult> doAnnotate(final PsiFile file) {
+    public List<Problems> doAnnotate(final AnnotatorFile annotatorFile) {
+        PsiFile file = annotatorFile.getFile();
+        Editor editor = annotatorFile.getEditor();
+
         ElmPluginSettings elmPluginSettings = ElmPluginSettings.getInstance(file.getProject());
 
         if (!elmPluginSettings.pluginEnabled) {
@@ -101,34 +78,12 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
 
         String canonicalPath = file.getVirtualFile().getCanonicalPath();
 
-        Optional<InputStream> inputStream = ElmMake.execute(basePath.get(), elmPluginSettings.elmMakeExecutable, canonicalPath);
+        List<Problems> problems = ElmMake.execute(editor, basePath.get(), elmPluginSettings.elmMakeExecutable, canonicalPath);
 
-        List<ElmMakeResult> issues = new ArrayList<>();
-        if (inputStream.isPresent()) {
-            String output = null;
-            try {
-                List<String> lines = CharStreams.readLines(new InputStreamReader(inputStream.get()));
-                for (String line : lines) {
-                    if (notValidJsonArray(line)) {
-                        continue;
-                    }
-                    output = line;
-                    List<ElmMakeResult> makeResult = new Gson().fromJson(output, new TypeToken<List<ElmMakeResult>>() {
-                    }.getType());
-
-                    issues.addAll(makeResult
-                            .stream()
-                            .filter(res -> isIssueForCurrentFile(basePath.get(), canonicalPath, res)).collect(Collectors.toList()));
-                }
-            } catch (JsonSyntaxException e) {
-                LOG.error(e.getMessage(), e);
-                LOG.error("Could not convert to JSON: " + output);
-            } catch (IOException e) {
-                LOG.error(e.getMessage(), e);
-            }
-        }
-
-        return issues;
+        return problems
+                .stream()
+                .filter(res -> isIssueForCurrentFile(basePath.get(), canonicalPath, res))
+                .collect(Collectors.toList());
     }
 
     private Optional<String> findElmPackageDirectory(PsiFile file) {
@@ -148,27 +103,23 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
         }
     }
 
-    private boolean notValidJsonArray(String line) {
-        return !line.startsWith("[");
-    }
-
-    private boolean isIssueForCurrentFile(String basePath, String canonicalPath, ElmMakeResult res) {
+    private boolean isIssueForCurrentFile(String basePath, String canonicalPath, Problems res) {
         return res.file.replace("./", basePath + "/").equals(canonicalPath);
     }
 
     /** Called 3rd to actually annotate the editor window */
     @Override
     public void apply(@NotNull PsiFile file,
-                      List<ElmMakeResult> issues,
+                      List<Problems> issues,
                       @NotNull AnnotationHolder holder) {
         Document document = PsiDocumentManager.getInstance(file.getProject()).getDocument(file);
 
-        for (ElmMakeResult issue : issues) {
+        for (Problems issue : issues) {
             annotateForIssue(holder, document, issue, file);
         }
     }
 
-    private void annotateForIssue(@NotNull AnnotationHolder holder, Document document, ElmMakeResult issue, PsiFile file) {
+    private void annotateForIssue(@NotNull AnnotationHolder holder, Document document, Problems issue, PsiFile file) {
         TextRange selector = findAnnotationLocation(document, issue);
 
         Annotation annotation;
@@ -193,7 +144,7 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
     }
 
     @NotNull
-    private TextRange findAnnotationLocation(Document document, ElmMakeResult issue) {
+    private TextRange findAnnotationLocation(Document document, Problems issue) {
         Region region = issue.subregion != null ? issue.subregion : issue.region;
 
         int offsetStart = StringUtil.lineColToOffset(document.getText(), region.start.line - 1, region.start.column - 1);
@@ -214,7 +165,7 @@ public class ElmMakeExternalAnnotator extends ExternalAnnotator<PsiFile, List<El
     }
 
     @NotNull
-    private String createToolTip(ElmMakeResult issue) {
+    private String createToolTip(Problems issue) {
         String previousLine = "";
         StringBuilder tooltip = new StringBuilder("<html><strong>" + issue.overview + "</strong><br/><hr/>");
         String[] lines = issue.details.split("\\n");
